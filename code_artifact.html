@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>冰與火之舞 - 網頁版節奏遊戲</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap');
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #080b11;
+            overflow: hidden;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        /* 霓虹發光效果 */
+        .neon-glow-blue {
+            text-shadow: 0 0 10px rgba(56, 189, 248, 0.8), 0 0 20px rgba(56, 189, 248, 0.4);
+        }
+        .neon-glow-red {
+            text-shadow: 0 0 10px rgba(239, 68, 68, 0.8), 0 0 20px rgba(239, 68, 68, 0.4);
+        }
+        /* 隱藏滾動條 */
+        ::-webkit-scrollbar {
+            display: none;
+        }
+    </style>
+</head>
+<body class="w-screen h-screen flex flex-col items-center justify-between p-4 text-white">
+
+    <!-- 頂部資訊列 -->
+    <div class="w-full max-w-5xl flex justify-between items-center z-10 p-2">
+        <div class="flex items-center gap-3">
+            <span class="text-2xl font-black italic tracking-widest">
+                <span class="text-sky-400 neon-glow-blue">A DANCE</span>
+                <span class="text-gray-400">OF</span>
+                <span class="text-red-500 neon-glow-red">FIRE & ICE</span>
+            </span>
+        </div>
+        <div class="flex gap-4 md:gap-6 text-xs md:text-sm font-semibold">
+            <div class="bg-slate-900/90 px-3 py-2 rounded-lg border border-slate-700/50">
+                關卡進度: <span id="progress-text" class="text-emerald-400">0%</span>
+            </div>
+            <div class="bg-slate-900/90 px-3 py-2 rounded-lg border border-slate-700/50">
+                連續完美: <span id="combo-text" class="text-yellow-400">0</span>
+            </div>
+            <div class="bg-slate-900/90 px-3 py-2 rounded-lg border border-slate-700/50">
+                精準度: <span id="accuracy-text" class="text-purple-400">100.0%</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 遊戲主畫布容器 -->
+    <div id="canvas-container" class="relative w-full max-w-5xl flex-1 my-2 bg-slate-950 rounded-2xl border-2 border-slate-800 overflow-hidden flex items-center justify-center transition-all duration-100">
+        <!-- 畫布 -->
+        <canvas id="gameCanvas" class="w-full h-full block"></canvas>
+
+        <!-- 判定提示文字 -->
+        <div id="judgement-display" class="absolute pointer-events-none text-4xl md:text-5xl font-black italic transform scale-90 opacity-0 transition-all duration-75 text-center">
+            PERFECT
+        </div>
+
+        <!-- 初始/暫停/結束 覆蓋選單 -->
+        <div id="menu-overlay" class="absolute inset-0 bg-slate-950/95 flex flex-col items-center justify-center p-6 text-center z-20 overflow-y-auto">
+            <div class="max-w-md space-y-5 my-auto">
+                <h1 class="text-4xl md:text-5xl font-black tracking-wider leading-tight">
+                    <span class="text-sky-400">冰</span>與<span class="text-red-500">火</span>之舞
+                </h1>
+                <p class="text-slate-400 text-xs md:text-sm leading-relaxed">
+                    跟隨音樂的極致律動，在對稱雙星的交替旋轉中前行。每次點擊都會改變旋轉的中心點與「順逆方向」，沿著複雜的軌道挑戰終點吧！
+                </p>
+
+                <!-- 歌曲與關卡選擇 -->
+                <div class="bg-slate-900/90 p-4 rounded-xl border border-slate-800 text-left space-y-3">
+                    <label class="block text-xs font-bold uppercase tracking-wider text-slate-400">選擇難度關卡</label>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button onclick="selectLevel('easy')" id="btn-lvl-easy" class="py-2 px-3 rounded-lg text-xs md:text-sm font-bold bg-sky-500/20 border border-sky-500 text-sky-400 transition-all">
+                            新手上路 (BPM 110)
+                        </button>
+                        <button onclick="selectLevel('normal')" id="btn-lvl-normal" class="py-2 px-3 rounded-lg text-xs md:text-sm font-bold bg-slate-800 border border-transparent text-slate-400 hover:bg-slate-700 transition-all">
+                            漸入佳境 (BPM 140)
+                        </button>
+                        <button onclick="selectLevel('hard')" id="btn-lvl-hard" class="py-2 px-3 rounded-lg text-xs md:text-sm font-bold bg-slate-800 border border-transparent text-slate-400 hover:bg-slate-700 transition-all col-span-2">
+                            冰火之煉 (BPM 175)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 控制提示 -->
+                <div class="p-3 bg-slate-900/50 rounded-lg text-xs text-slate-400 border border-slate-800/80">
+                    點擊螢幕、按下鍵盤 <kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-600 text-white font-mono">Space</kbd> 鍵或 <kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-600 text-white font-mono">任何按鍵</kbd> 來敲擊拍點。
+                </div>
+
+                <!-- 開始按鈕 -->
+                <button id="start-btn" onclick="startGame()" class="w-full py-4 bg-gradient-to-r from-sky-500 to-red-500 hover:from-sky-400 hover:to-red-400 rounded-xl text-md md:text-lg font-black tracking-widest shadow-lg shadow-sky-500/20 active:scale-95 transition-all">
+                    進入音軌 (START)
+                </button>
+
+                <!-- 自訂關卡按鈕 -->
+                <button onclick="toggleEditor()" class="text-xs text-slate-400 hover:text-white transition-all underline block mx-auto">
+                    開啟/關閉 譜面自訂編輯器
+                </button>
+            </div>
+        </div>
+
+        <!-- 死亡/失敗 覆蓋畫面 -->
+        <div id="fail-overlay" class="absolute inset-0 bg-red-950/95 flex flex-col items-center justify-center p-6 text-center z-20 hidden">
+            <h2 class="text-4xl md:text-5xl font-black text-red-500 mb-2 tracking-wider">節奏中斷！</h2>
+            <p id="fail-reason" class="text-slate-300 mb-8 max-w-sm text-sm">你旋轉的角度偏差太大了，請再試一次。</p>
+            <div class="flex gap-4">
+                <button onclick="restartGame()" class="px-6 py-3 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg transition-all active:scale-95 shadow-lg shadow-red-600/30">
+                    重新開始 (R)
+                </button>
+                <button onclick="backToMenu()" class="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-lg transition-all">
+                    返回選單
+                </button>
+            </div>
+        </div>
+
+        <!-- 勝利/過關 覆蓋畫面 -->
+        <div id="win-overlay" class="absolute inset-0 bg-sky-950/95 flex flex-col items-center justify-center p-6 text-center z-20 hidden">
+            <div class="max-w-md space-y-6">
+                <h2 class="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-emerald-400 tracking-widest">
+                    完美演奏！
+                </h2>
+                <p class="text-slate-300">恭喜你，成功征服了這條高難度的旋律軌道！</p>
+                
+                <div class="bg-slate-900/80 p-5 rounded-xl border border-slate-800 text-left space-y-3">
+                    <div class="flex justify-between"><span class="text-slate-400">最終精準度:</span> <span id="win-acc" class="font-bold text-sky-400">100%</span></div>
+                    <div class="flex justify-between"><span class="text-slate-400">最大連擊 (Combo):</span> <span id="win-combo" class="font-bold text-yellow-400">0</span></div>
+                    <div class="flex justify-between"><span class="text-slate-400">完美判定次數:</span> <span id="win-perfects" class="font-bold text-emerald-400">0</span></div>
+                </div>
+
+                <div class="flex gap-4 justify-center">
+                    <button onclick="restartGame()" class="px-6 py-3 bg-sky-500 hover:bg-sky-400 text-white font-bold rounded-lg transition-all active:scale-95 shadow-lg shadow-sky-500/30">
+                        再次挑戰 (R)
+                    </button>
+                    <button onclick="backToMenu()" class="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-lg transition-all">
+                        返回主選單
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 底部控制與自訂編輯器 -->
+    <div id="editor-panel" class="w-full max-w-5xl bg-slate-900/90 p-4 rounded-xl border border-slate-800 z-10 hidden transition-all duration-300">
+        <div class="flex flex-col md:flex-row justify-between gap-4">
+            <div class="flex-1">
+                <h3 class="text-sm font-bold text-slate-200 mb-2">極簡關卡譜面編輯器 (當前路徑長度: <span id="editor-length" class="text-yellow-400">15</span>)</h3>
+                <p class="text-xs text-slate-400 mb-3">使用英文縮寫自訂軌道方向。R: 向右前進, U: 向上轉彎, D: 向下轉彎, L: 向左前進</p>
+                <div class="flex gap-2">
+                    <input id="custom-track-input" type="text" value="RRURRDRRURRDRR" class="flex-1 bg-slate-950 border border-slate-700 rounded px-3 py-1.5 text-sm font-mono tracking-widest text-emerald-400 uppercase focus:outline-none focus:border-emerald-500">
+                    <button onclick="applyCustomTrack()" class="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded transition-all">
+                        套用此譜面
+                    </button>
+                </div>
+            </div>
+            <div class="flex flex-wrap gap-2 items-end">
+                <div class="w-24">
+                    <label class="block text-xs text-slate-400 mb-1">自訂 BPM</label>
+                    <input id="custom-bpm-input" type="number" value="120" min="60" max="300" class="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-sm text-center">
+                </div>
+                <button onclick="setTrackPreset('snake')" class="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-xs rounded">蛇形曲折</button>
+                <button onclick="setTrackPreset('stairs')" class="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-xs rounded">螺旋階梯</button>
+                <button onclick="setTrackPreset('circle')" class="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-xs rounded">旋轉迴廊</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 底部說明列 -->
+    <div class="w-full max-w-5xl text-center py-2 text-[10px] text-slate-500 flex justify-between px-2">
+        <span>建議使用鍵盤 Space 鍵或任意鍵，節奏感更棒！按 [R] 可快速重試！</span>
+        <span>提示：如果無法播放，請點選任意地方啟動 Web Audio 合成音效</span>
+    </div>
+
+    <!-- 音訊合成器 (Web Audio API) 系統 -->
+    <script>
+        let audioCtx = null;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        // 當玩家完美點擊時，根據當前進度在五聲音階（C Major Pentatonic）中播放和弦旋律，讓遊戲更有演奏感
+        function playInteractiveNote(stepIndex) {
+            if (!audioCtx) return;
+            try {
+                // 五聲音階頻率: C4, D4, E4, G4, A4, C5, D5, E5, G5, A5
+                const pentatonic = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25, 783.99, 880.00];
+                const noteFreq = pentatonic[stepIndex % pentatonic.length];
+
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                const filter = audioCtx.createBiquadFilter();
+
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(noteFreq, audioCtx.currentTime);
+
+                // 添加一些泛音，讓音色聽起來像水晶音樂
+                const subOsc = audioCtx.createOscillator();
+                subOsc.type = 'triangle';
+                subOsc.frequency.setValueAtTime(noteFreq * 2, audioCtx.currentTime); // 高八度
+
+                const subGain = audioCtx.createGain();
+                subGain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(1500, audioCtx.currentTime);
+
+                gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+
+                osc.connect(filter);
+                subOsc.connect(subGain);
+                subGain.connect(filter);
+                filter.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                osc.start();
+                subOsc.start();
+                osc.stop(audioCtx.currentTime + 0.4);
+                subOsc.stop(audioCtx.currentTime + 0.4);
+            } catch (e) {}
+        }
+
+        // 打擊低音鼓/重音效果
+        function playTapSound(freq = 150, type = 'sine', duration = 0.12) {
+            if (!audioCtx) return;
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + duration);
+
+                gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch (e) {}
+        }
+
+        // 背景節奏拍點
+        function playBeatSound(freq = 440, duration = 0.04) {
+            if (!audioCtx) return;
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.04, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch (e) {}
+        }
+
+        // 失敗時的阻尼音效
+        function playFailSound() {
+            if (!audioCtx) return;
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(120, audioCtx.currentTime);
+                osc.frequency.linearRampToValueAtTime(20, audioCtx.currentTime + 0.4);
+                gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.4);
+            } catch (e) {}
+        }
+
+        // 勝利音效
+        function playWinSound() {
+            if (!audioCtx) return;
+            const now = audioCtx.currentTime;
+            const notes = [261.63, 329.63, 392.00, 523.25, 659.25, 783.99]; 
+            notes.forEach((freq, idx) => {
+                try {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, now + idx * 0.08);
+                    gain.gain.setValueAtTime(0.12, now + idx * 0.08);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.08 + 0.5);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now + idx * 0.08);
+                    osc.stop(now + idx * 0.08 + 0.5);
+                } catch(e){}
+            });
+        }
+    </script>
+
+    <!-- 遊戲主體邏輯代碼 -->
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('canvas-container');
+
+        const LEVEL_PRESETS = {
+            easy: {
+                bpm: 110,
+                track: "RRRURRDRRRURRDRRR"
+            },
+            normal: {
+                bpm: 140,
+                track: "RRURDRRURDLRRURRDRRURR"
+            },
+            hard: {
+                bpm: 175,
+                track: "RRURDLRRURDLRRURDLRRURDLRR"
+            }
+        };
+
+        let currentBpm = LEVEL_PRESETS.easy.bpm;
+        let trackString = LEVEL_PRESETS.easy.track;
+        let selectedPresetId = 'easy';
+
+        let isPlaying = false;
+        let lastTime = 0;
+        let camera = { x: 0, y: 0, targetX: 0, targetY: 0, lerpSpeed: 0.12 };
+        
+        let pathTiles = [];
+        const TILE_SIZE = 75;
+
+        // 雙星系統狀態
+        let planets = {
+            blue: { x: 0, y: 0, color: '#38bdf8', glow: 'rgba(56, 189, 248, 0.8)', name: '冰', trail: [] },
+            red: { x: 0, y: 0, color: '#ef4444', glow: 'rgba(239, 68, 68, 0.8)', name: '火', trail: [] },
+            activePlanet: 'red', 
+            pivotPlanet: 'blue',  
+            angle: 0,            
+            radius: TILE_SIZE,    
+            speed: 0,             // 旋轉角速度 (rad/s)
+            direction: 1          // 1: 逆時針, -1: 順時針 (每次擊打後切換)
+        };
+
+        // 計分與判定
+        let targetTileIndex = 1; 
+        let hitHits = 0;
+        let totalHitsAttempted = 0;
+        let combo = 0;
+        let maxCombo = 0;
+        let perfectCount = 0;
+        let accuracy = 100.0;
+        let perfectWindow = 0.075; // 稍微收緊判定，手感更扎實
+        let greatWindow = 0.15;   
+
+        let particles = [];
+        let metronomeTimer = null;
+        let pulseIntensity = 0; // 節奏律動脈衝強度
+
+        function resizeCanvas() {
+            const rect = container.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+            if (!isPlaying) {
+                draw(); // 重繪確保靜態畫面比例正常
+            }
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        function selectLevel(levelId) {
+            selectedPresetId = levelId;
+            currentBpm = LEVEL_PRESETS[levelId].bpm;
+            trackString = LEVEL_PRESETS[levelId].track;
+
+            ['easy', 'normal', 'hard'].forEach(id => {
+                const btn = document.getElementById(`btn-lvl-${id}`);
+                if (id === levelId) {
+                    btn.className = "py-2 px-3 rounded-lg text-xs md:text-sm font-bold bg-sky-500/20 border border-sky-500 text-sky-400 transition-all";
+                } else {
+                    btn.className = "py-2 px-3 rounded-lg text-xs md:text-sm font-bold bg-slate-800 border border-transparent text-slate-400 hover:bg-slate-700 transition-all";
+                }
+            });
+
+            document.getElementById('custom-track-input').value = trackString;
+            document.getElementById('custom-bpm-input').value = currentBpm;
+            document.getElementById('editor-length').innerText = trackString.length;
+            
+            resetGame();
+        }
+
+        function toggleEditor() {
+            const panel = document.getElementById('editor-panel');
+            panel.classList.toggle('hidden');
+        }
+
+        function applyCustomTrack() {
+            const customStr = document.getElementById('custom-track-input').value.toUpperCase().replace(/[^RULD]/g, '');
+            const customBpm = parseInt(document.getElementById('custom-bpm-input').value) || 120;
+            
+            if (customStr.length < 3) {
+                showJudgement("太短了！最少需 3 個方向字元", "text-red-400");
+                return;
+            }
+
+            trackString = customStr;
+            currentBpm = customBpm;
+            document.getElementById('editor-length').innerText = trackString.length;
+            showJudgement("自訂譜面載入完成！", "text-emerald-400");
+            resetGame();
+        }
+
+        function setTrackPreset(type) {
+            if (type === 'snake') {
+                document.getElementById('custom-track-input').value = "RRURRDRRURRDRRURRD";
+            } else if (type === 'stairs') {
+                document.getElementById('custom-track-input').value = "RURURURURURURURURU";
+            } else if (type === 'circle') {
+                document.getElementById('custom-track-input').value = "RRRUUULLLDDDRRRUUU";
+            }
+            applyCustomTrack();
+        }
+
+        // --- 生成路徑瓦片位置 ---
+        function generatePath() {
+            pathTiles = [];
+            let curX = 0;
+            let curY = 0;
+            
+            pathTiles.push({
+                x: curX,
+                y: curY,
+                dir: 'R'
+            });
+
+            for (let i = 0; i < trackString.length; i++) {
+                const dir = trackString[i];
+                if (dir === 'R') curX += TILE_SIZE;
+                else if (dir === 'L') curX -= TILE_SIZE;
+                else if (dir === 'U') curY -= TILE_SIZE;
+                else if (dir === 'D') curY += TILE_SIZE;
+
+                pathTiles.push({
+                    x: curX,
+                    y: curY,
+                    dir: dir
+                });
+            }
+        }
+
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 20; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 5 + 3;
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    radius: Math.random() * 3 + 2,
+                    color: color,
+                    alpha: 1
+                });
+            }
+        }
+
+        // --- 遊戲重設 ---
+        function resetGame() {
+            generatePath();
+            
+            planets.pivotPlanet = 'blue';
+            planets.activePlanet = 'red';
+            planets.direction = 1; // 初始順時針/逆時針預設
+            
+            planets.blue.x = pathTiles[0].x;
+            planets.blue.y = pathTiles[0].y;
+            planets.blue.trail = [];
+            planets.red.trail = [];
+            
+            // 紅色旋轉球初始在左方旋轉，準備拍擊
+            planets.angle = Math.PI; 
+            planets.red.x = planets.blue.x + Math.cos(planets.angle) * planets.radius;
+            planets.red.y = planets.blue.y + Math.sin(planets.angle) * planets.radius;
+
+            planets.speed = (currentBpm / 60) * Math.PI;
+
+            targetTileIndex = 1;
+            hitHits = 0;
+            totalHitsAttempted = 0;
+            combo = 0;
+            perfectCount = 0;
+            accuracy = 100.0;
+            particles = [];
+
+            updateScoreboard();
+
+            camera.x = pathTiles[0].x;
+            camera.y = pathTiles[0].y;
+            camera.targetX = pathTiles[0].x;
+            camera.targetY = pathTiles[0].y;
+        }
+
+        function updateScoreboard() {
+            document.getElementById('progress-text').innerText = `${Math.floor((targetTileIndex - 1) / trackString.length * 100)}%`;
+            document.getElementById('combo-text').innerText = combo;
+            document.getElementById('accuracy-text').innerText = `${accuracy.toFixed(1)}%`;
+        }
+
+        // --- 啟動流程 ---
+        function startGame() {
+            initAudio();
+            document.getElementById('menu-overlay').classList.add('hidden');
+            document.getElementById('fail-overlay').classList.add('hidden');
+            document.getElementById('win-overlay').classList.add('hidden');
+
+            resetGame();
+            
+            isPlaying = true;
+            lastTime = performance.now();
+            requestAnimationFrame(gameLoop);
+
+            // 背景對拍節拍器（並提供視覺脈衝）
+            if (metronomeTimer) clearInterval(metronomeTimer);
+            const beatIntervalMs = (60 / currentBpm) * 1000;
+            metronomeTimer = setInterval(() => {
+                if (isPlaying) {
+                    playBeatSound(520, 0.05); // 更柔和好聽的拍擊對拍聲
+                    pulseIntensity = 1.0; // 觸發背景脈衝
+                }
+            }, beatIntervalMs);
+        }
+
+        function failGame(reason) {
+            isPlaying = false;
+            if (metronomeTimer) clearInterval(metronomeTimer);
+            playFailSound();
+            document.getElementById('fail-reason').innerText = reason;
+            document.getElementById('fail-overlay').classList.remove('hidden');
+        }
+
+        function winGame() {
+            isPlaying = false;
+            if (metronomeTimer) clearInterval(metronomeTimer);
+            playWinSound();
+            
+            document.getElementById('win-acc').innerText = `${accuracy.toFixed(1)}%`;
+            document.getElementById('win-combo').innerText = maxCombo;
+            document.getElementById('win-perfects').innerText = `${perfectCount} 次`;
+            document.getElementById('win-overlay').classList.remove('hidden');
+        }
+
+        function restartGame() {
+            startGame();
+        }
+
+        function backToMenu() {
+            isPlaying = false;
+            if (metronomeTimer) clearInterval(metronomeTimer);
+            document.getElementById('fail-overlay').classList.add('hidden');
+            document.getElementById('win-overlay').classList.add('hidden');
+            document.getElementById('menu-overlay').classList.remove('hidden');
+            resetGame();
+        }
+
+        // --- 核心打擊判定 ---
+        function handleTap() {
+            if (!isPlaying) return;
+            initAudio();
+
+            const targetTile = pathTiles[targetTileIndex];
+            const activeObj = planets[planets.activePlanet];
+            const pivotObj = planets[planets.pivotPlanet];
+
+            // 1. 理論目標角度 (從中心指向目標瓦片)
+            const targetAngle = Math.atan2(targetTile.y - pivotObj.y, targetTile.x - pivotObj.x);
+            
+            // 2. 獲取當前旋轉角度差
+            let angleDiff = planets.angle - targetAngle;
+            while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+            while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+
+            // 3. 結合旋轉方向修正判定 (當 direction 為 1 時 angle 增加，大於 0 表示過遲；direction 為 -1 時 angle 減少，小於 0 表示過遲)
+            const relativeAngleDiff = angleDiff * planets.direction;
+            const timeDiff = relativeAngleDiff / planets.speed;
+            const absTimeDiff = Math.abs(timeDiff);
+
+            let resultText = "TOO LATE";
+            let resultClass = "text-red-500";
+            let hitSuccess = false;
+
+            if (absTimeDiff <= perfectWindow) {
+                resultText = "PERFECT";
+                resultClass = "text-sky-400 neon-glow-blue font-black";
+                hitSuccess = true;
+                combo++;
+                perfectCount++;
+                hitHits += 1.0;
+            } else if (absTimeDiff <= greatWindow) {
+                resultText = "GREAT";
+                resultClass = "text-emerald-400 font-bold";
+                hitSuccess = true;
+                combo++;
+                hitHits += 0.8;
+            } else {
+                if (timeDiff < 0) {
+                    resultText = "TOO EARLY";
+                    resultClass = "text-yellow-500";
+                } else {
+                    resultText = "TOO LATE";
+                    resultClass = "text-red-500";
+                }
+                
+                // 斷軌容差 (0.22 秒)
+                if (absTimeDiff > 0.22) {
+                    failGame(`判定為 ${resultText === "TOO EARLY" ? "過早" : "過遲"}！失去了旋轉平衡。`);
+                    return;
+                }
+
+                hitSuccess = true;
+                combo = 0; 
+                hitHits += 0.3;
+            }
+
+            if (hitSuccess) {
+                totalHitsAttempted++;
+                accuracy = (hitHits / totalHitsAttempted) * 100;
+                if (combo > maxCombo) maxCombo = combo;
+
+                // 播放動態音符與打擊感鼓聲
+                playTapSound(160, 'sine', 0.1);
+                playInteractiveNote(targetTileIndex);
+
+                createParticles(targetTile.x, targetTile.y, activeObj.color);
+
+                // 切換旋轉中心 (軌道交替)
+                planets.pivotPlanet = planets.activePlanet;
+                planets.activePlanet = planets.activePlanet === 'red' ? 'blue' : 'red';
+                
+                // 核心修正：擊打成功時，切換為「相反」的旋轉方向！(實踐 S 行經典走法)
+                planets.direction = -planets.direction;
+
+                // 將旋轉角度對齊到精確的目標，避免累積物理誤差
+                planets.angle = Math.atan2(pivotObj.y - targetTile.y, pivotObj.x - targetTile.x) + Math.PI;
+
+                targetTileIndex++;
+                updateScoreboard();
+                showJudgement(resultText, resultClass);
+
+                if (targetTileIndex >= pathTiles.length) {
+                    winGame();
+                }
+            }
+        }
+
+        function showJudgement(text, cssClass) {
+            const display = document.getElementById('judgement-display');
+            display.innerText = text;
+            display.className = `absolute pointer-events-none text-4xl md:text-5xl font-black italic tracking-wider transition-none ${cssClass}`;
+            
+            display.style.transform = "scale(1.25)";
+            display.style.opacity = "1";
+            
+            setTimeout(() => {
+                display.style.transition = "all 0.4s cubic-bezier(0.16, 1, 0.3, 1)";
+                display.style.transform = "scale(0.9)";
+                display.style.opacity = "0";
+            }, 80);
+        }
+
+        // --- 鍵盤/觸控監聽與快捷鍵 [R] ---
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'F12' || e.metaKey || e.ctrlKey) return;
+            
+            // 允許快捷鍵 R 重新開始
+            if ((e.key === 'r' || e.key === 'R') && !document.getElementById('menu-overlay').classList.contains('hidden')) {
+                return; // 選單狀態不重置
+            }
+            if (e.key === 'r' || e.key === 'R') {
+                restartGame();
+                return;
+            }
+
+            if (e.key === ' ' || e.key.length === 1) {
+                e.preventDefault();
+                handleTap();
+            }
+        });
+
+        canvas.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            handleTap();
+        });
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handleTap();
+        });
+
+
+        // --- 遊戲邏輯與渲染環路 (Loop) ---
+        function gameLoop(now) {
+            if (!isPlaying) return;
+
+            const delta = (now - lastTime) / 1000; 
+            lastTime = now;
+
+            // 1. 背景脈衝強度遞減
+            if (pulseIntensity > 0) {
+                pulseIntensity -= delta * 4;
+                if (pulseIntensity < 0) pulseIntensity = 0;
+            }
+
+            // 2. 雙星物理位置更新 (順時針/逆時針)
+            planets.angle += planets.direction * planets.speed * delta;
+
+            const pivotObj = planets[planets.pivotPlanet];
+            const activeObj = planets[planets.activePlanet];
+
+            activeObj.x = pivotObj.x + Math.cos(planets.angle) * planets.radius;
+            activeObj.y = pivotObj.y + Math.sin(planets.angle) * planets.radius;
+
+            // 紀錄軌跡拖尾 (Tail Effect)
+            activeObj.trail.push({ x: activeObj.x, y: activeObj.y });
+            if (activeObj.trail.length > 12) {
+                activeObj.trail.shift();
+            }
+            // 靜止的球不需要留軌跡
+            pivotObj.trail = [];
+
+            // 3. 超限檢測 (過慢漏拍)
+            const targetTile = pathTiles[targetTileIndex];
+            if (targetTile) {
+                const targetAngle = Math.atan2(targetTile.y - pivotObj.y, targetTile.x - pivotObj.x);
+                let angleDiff = planets.angle - targetAngle;
+                while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+
+                const relativeAngleDiff = angleDiff * planets.direction;
+                // 當旋轉過頭超過 2.4 弧度 (近乎一整圈) 判定漏拍
+                if (relativeAngleDiff > 2.4) {
+                    failGame("漏拍了！未能跟上節奏的速度。");
+                    return;
+                }
+            }
+
+            // 4. 鏡頭緩動
+            camera.targetX = pivotObj.x;
+            camera.targetY = pivotObj.y;
+            camera.x += (camera.targetX - camera.x) * camera.lerpSpeed;
+            camera.y += (camera.targetY - camera.y) * camera.lerpSpeed;
+
+            // 5. 更新打擊粒子
+            particles.forEach((p, idx) => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.alpha -= delta * 2.5;
+                if (p.alpha <= 0) particles.splice(idx, 1);
+            });
+
+            // 6. 渲染繪製
+            draw();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // --- 繪圖渲染繪製器 ---
+        function draw() {
+            // 根據節拍脈衝對背景與容器邊框進行柔和發光和收縮
+            container.style.borderColor = `rgba(51, 65, 85, ${0.5 + pulseIntensity * 0.5})`;
+            container.style.transform = `scale(${1 + pulseIntensity * 0.005})`;
+
+            // 畫布基礎色
+            const bgGrad = ctx.createRadialGradient(canvas.width/2, canvas.height/2, 10, canvas.width/2, canvas.height/2, canvas.width);
+            bgGrad.addColorStop(0, '#0d1321');
+            bgGrad.addColorStop(1, '#05070c');
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.save();
+            ctx.translate(canvas.width / 2 - camera.x, canvas.height / 2 - camera.y);
+
+            // 1. 繪製太空星光點背景 (微動視差)
+            ctx.fillStyle = "rgba(255, 255, 255, 0.12)";
+            for (let i = -15; i < 25; i++) {
+                for (let j = -15; j < 25; j++) {
+                    const bx = i * 280 + (camera.x * 0.08) % 280;
+                    const by = j * 280 + (camera.y * 0.08) % 280;
+                    ctx.beginPath();
+                    ctx.arc(bx, by, 1, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            // 2. 繪製軌道線 (背景連接虛線)
+            ctx.beginPath();
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.04)";
+            ctx.lineWidth = 6;
+            ctx.setLineDash([10, 15]);
+            for (let i = 0; i < pathTiles.length; i++) {
+                if (i === 0) ctx.moveTo(pathTiles[i].x, pathTiles[i].y);
+                else ctx.lineTo(pathTiles[i].x, pathTiles[i].y);
+            }
+            ctx.stroke();
+            ctx.setLineDash([]); 
+
+            // 3. 繪製軌道瓦片 (Tiles)
+            pathTiles.forEach((tile, index) => {
+                const isPassed = index < targetTileIndex;
+                const isTarget = index === targetTileIndex;
+
+                let tileColor = '#131a26'; 
+                let strokeColor = '#242f42';
+                let thickness = 3;
+
+                if (isPassed) {
+                    tileColor = '#0a0f18';
+                    strokeColor = '#0284c7'; // 踩過為亮藍色
+                } else if (isTarget) {
+                    const glowScale = 1 + Math.sin(performance.now() / 120) * 0.12;
+                    tileColor = '#101726';
+                    strokeColor = planets.activePlanet === 'red' ? '#ef4444' : '#38bdf8';
+                    thickness = 4.5 * glowScale;
+                } else if (index === pathTiles.length - 1) {
+                    tileColor = '#3c2408';
+                    strokeColor = '#f59e0b';
+                }
+
+                ctx.save();
+                ctx.translate(tile.x, tile.y);
+                
+                if (isTarget) {
+                    ctx.shadowColor = strokeColor;
+                    ctx.shadowBlur = 18;
+                }
+
+                ctx.fillStyle = tileColor;
+                ctx.strokeStyle = strokeColor;
+                ctx.lineWidth = thickness;
+
+                const size = TILE_SIZE - 24;
+                ctx.beginPath();
+                ctx.roundRect(-size/2, -size/2, size, size, 14);
+                ctx.fill();
+                ctx.stroke();
+
+                // 方向引導箭頭
+                ctx.fillStyle = isTarget ? strokeColor : "rgba(255, 255, 255, 0.2)";
+                ctx.font = "bold 13px 'Noto Sans TC'";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                let dirArrow = "→";
+                if (tile.dir === 'U') dirArrow = "↑";
+                if (tile.dir === 'D') dirArrow = "↓";
+                if (tile.dir === 'L') dirArrow = "←";
+                
+                if (index === pathTiles.length - 1) {
+                    dirArrow = "GOAL";
+                    ctx.font = "900 9px sans-serif";
+                }
+                ctx.fillText(dirArrow, 0, 0);
+
+                ctx.restore();
+            });
+
+            // 4. 繪製「打擊切點導引線」 (超級關鍵！引導玩家看清完美點)
+            const targetTile = pathTiles[targetTileIndex];
+            const pivotObj = planets[planets.pivotPlanet];
+            if (targetTile && isPlaying) {
+                // 繪製理論上的完美軌跡圓弧
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(pivotObj.x, pivotObj.y, planets.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+
+                // 完美擊打點射線
+                ctx.beginPath();
+                ctx.moveTo(pivotObj.x, pivotObj.y);
+                ctx.lineTo(targetTile.x, targetTile.y);
+                ctx.strokeStyle = planets.activePlanet === 'red' ? "rgba(239, 68, 68, 0.25)" : "rgba(56, 189, 248, 0.25)";
+                ctx.lineWidth = 3;
+                ctx.setLineDash([5, 8]);
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            // 5. 繪製打擊完美粒子
+            particles.forEach(p => {
+                ctx.save();
+                ctx.globalAlpha = p.alpha;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                ctx.fillStyle = p.color;
+                ctx.shadowColor = p.color;
+                ctx.shadowBlur = 8;
+                ctx.fill();
+                ctx.restore();
+            });
+
+            // 6. 繪製拖尾效果 (Trails)
+            ['blue', 'red'].forEach(key => {
+                const p = planets[key];
+                if (p.trail.length > 1) {
+                    ctx.save();
+                    for (let i = 0; i < p.trail.length - 1; i++) {
+                        const pt1 = p.trail[i];
+                        const pt2 = p.trail[i+1];
+                        const alpha = (i / p.trail.length) * 0.45;
+                        ctx.beginPath();
+                        ctx.moveTo(pt1.x, pt1.y);
+                        ctx.lineTo(pt2.x, pt2.y);
+                        ctx.strokeStyle = p.color;
+                        ctx.lineWidth = (i / p.trail.length) * 11;
+                        ctx.globalAlpha = alpha;
+                        ctx.lineCap = 'round';
+                        ctx.stroke();
+                    }
+                    ctx.restore();
+                }
+            });
+
+            // 7. 繪製「冰球」與「火球」實體
+            ['blue', 'red'].forEach(key => {
+                const p = planets[key];
+                const isPivot = planets.pivotPlanet === key;
+
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 14, 0, Math.PI * 2);
+                ctx.fillStyle = p.color;
+                ctx.shadowColor = p.glow;
+                ctx.shadowBlur = isPivot ? 12 : 24; // 旋轉中的球發光更炫
+                ctx.fill();
+                
+                // 繪製球心亮白光芒
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, isPivot ? 6 : 4, 0, Math.PI * 2);
+                ctx.fillStyle = '#ffffff';
+                ctx.fill();
+                ctx.restore();
+            });
+
+            ctx.restore(); 
+        }
+
+        selectLevel('easy');
+    </script>
+</body>
+</html>
